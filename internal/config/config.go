@@ -226,11 +226,12 @@ type (
 	}
 
 	Endpoint struct {
-		Name     string `json:"name"`
-		Url      string `json:"url"`
-		User     string `json:"user"`
-		Password string `json:"password"`
-		Weight   uint8  `json:"weight"`
+		Name       string `json:"name"`
+		Url        string `json:"url"`
+		User       string `json:"user"`
+		Password   string `json:"password"`
+		Weight     uint8  `json:"weight"`
+		Authorizer string `json:"authorizer"`
 	}
 
 	StickySessionConfig struct {

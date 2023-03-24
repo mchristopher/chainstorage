@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/session"
+	signerv4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/uber-go/tally"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -40,6 +42,7 @@ type (
 		Slave      endpoints.EndpointProvider `name:"slave"`
 		Validator  endpoints.EndpointProvider `name:"validator"`
 		HTTPClient HTTPClient                 `optional:"true"` // Injected by unit test.
+		Session    *session.Session
 	}
 
 	ClientResult struct {
@@ -95,6 +98,7 @@ type (
 		httpClient       HTTPClient
 		retry            retry.Retry
 		endpointProvider endpoints.EndpointProvider
+		session          *session.Session
 	}
 )
 
@@ -144,6 +148,7 @@ func newClient(params ClientParams, endpointProvider endpoints.EndpointProvider)
 		httpClient:       params.HTTPClient,
 		retry:            clientRetry,
 		endpointProvider: endpointProvider,
+		session:          params.Session,
 	}, nil
 }
 
@@ -291,6 +296,7 @@ func (c *clientImpl) makeHTTPRequest(ctx context.Context, timeout time.Duration,
 	url := endpoint.Config.Url
 	user := endpoint.Config.User
 	password := endpoint.Config.Password
+	authorizer := endpoint.Config.Authorizer
 
 	requestBody, err := json.Marshal(data)
 	if err != nil {
@@ -310,6 +316,15 @@ func (c *clientImpl) makeHTTPRequest(ctx context.Context, timeout time.Duration,
 
 	if user != "" && password != "" {
 		request.SetBasicAuth(user, password)
+	}
+
+	if authorizer == "aws" {
+		signer := signerv4.NewSigner(c.session.Config.Credentials)
+		_, err = signer.Sign(request, bytes.NewReader(requestBody), "managedblockchain", *c.session.Config.Region, time.Now())
+		if err != nil {
+			err = c.sanitizedError(err)
+			return xerrors.Errorf("failed to sign AWS request: %w", err)
+		}
 	}
 
 	response, err := c.getHTTPClient(endpoint).Do(request)
